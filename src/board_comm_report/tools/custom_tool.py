@@ -1,11 +1,34 @@
 from crewai.tools import BaseTool
-from typing import Type, List
+from typing import Type, List, Optional
 from pydantic import BaseModel, Field
 import os
+import json
 from datetime import datetime
 from azure.identity import ClientSecretCredential
 from msgraph import GraphServiceClient
 from msgraph.generated.models.o_data_errors.o_data_error import ODataError
+
+# Module-level cache for the Microsoft Graph client to avoid redundant authentication
+# and to prevent Pydantic serialization issues within CrewAI tools.
+_cached_graph_client: Optional[GraphServiceClient] = None
+
+def get_graph_client() -> Optional[GraphServiceClient]:
+    global _cached_graph_client
+    if _cached_graph_client is None:
+        tenant_id = os.environ.get("AZURE_TENANT_ID")
+        client_id = os.environ.get("AZURE_CLIENT_ID")
+        client_secret = os.environ.get("AZURE_CLIENT_SECRET")
+        if tenant_id and client_id and client_secret:
+            credential = ClientSecretCredential(tenant_id, client_id, client_secret)
+            # You must provide the .default scope for client credentials
+            _cached_graph_client = GraphServiceClient(
+                credentials=credential, 
+                scopes=['https://graph.microsoft.com/.default']
+            )
+    return _cached_graph_client
+
+class SharePointToolInput(BaseModel):
+    pass
 
 class SharePointTool(BaseTool):
     name: str = "SharePoint Navigator"
@@ -13,55 +36,84 @@ class SharePointTool(BaseTool):
         "A tool to navigate and query SharePoint sites. "
         "Use this tool to find information about board meetings, like dates and times."
     )
-    args_schema: Type[BaseModel] = None
+    args_schema: Type[BaseModel] = SharePointToolInput
 
     def _run(self) -> str:
         """
         Connects to SharePoint and retrieves board meeting dates.
-        
-        To use this tool, you need to set the following environment variables:
-        - AZURE_TENANT_ID: The ID of your Azure tenant.
-        - AZURE_CLIENT_ID: The client ID for your Azure AD app.
-        - AZURE_CLIENT_SECRET: The client secret for your Azure AD app.
-        - SHAREPOINT_SITE_ID: The ID of your SharePoint site.
-        - SHAREPOINT_CALENDAR_ID: The ID of the calendar.
         """
-        tenant_id = os.environ.get("AZURE_TENANT_ID")
-        client_id = os.environ.get("AZURE_CLIENT_ID")
-        client_secret = os.environ.get("AZURE_CLIENT_SECRET")
-        site_id = os.environ.get("SHAREPOINT_SITE_ID")
-        calendar_id = os.environ.get("SHAREPOINT_CALENDAR_ID")
+        site_id = os.environ.get("SHAREPOINT_SITE_ID", "instituteofmusic.sharepoint.com:/sites/BoardConnect:")
+        calendar_id = os.environ.get("SHAREPOINT_CALENDAR_ID", "7b632d43-ee15-4950-a7a1-1f6be09caea5")
 
-        if not all([tenant_id, client_id, client_secret, site_id, calendar_id]):
-            return "Azure and SharePoint credentials are not fully configured. Please set AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, SHAREPOINT_SITE_ID and SHAREPOINT_CALENDAR_ID environment variables."
+        if not site_id or not calendar_id:
+            return json.dumps({"error": "SharePoint credentials are not fully configured. Please set SHAREPOINT_SITE_ID and SHAREPOINT_CALENDAR_ID environment variables."})
+
+        graph_client = get_graph_client()
+        if not graph_client:
+            return json.dumps({"error": "Azure credentials are not configured. Please set AZURE_TENANT_ID, AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET environment variables."})
 
         try:
-            credential = ClientSecretCredential(tenant_id, client_id, client_secret)
-            graph_client = GraphServiceClient(credentials=credential)
-
             now = datetime.now()
+            # MS Graph OData queries require ISO format with Z for UTC, and no microseconds
+            now_str = now.replace(microsecond=0).isoformat() + "Z"
             
-            # Get upcoming events
+            # OData v4 query parameters
+            # $top is passed as `top` for the msgraph sdk get method
             upcoming_events = graph_client.sites.by_site_id(site_id).lists.by_list_id(calendar_id).items.get(
-                query_params={"filter": f"fields/EventDate ge '{now.isoformat()}'", "orderby": "fields/EventDate asc"}
+                query_params={
+                    "filter": f"fields/EventDate ge '{now_str}'", 
+                    "orderby": "fields/EventDate asc",
+                    "top": 10,
+                    "expand": "fields($select=Title,EventDate)"
+                }
             )
             # Get past events
             past_events = graph_client.sites.by_site_id(site_id).lists.by_list_id(calendar_id).items.get(
-                query_params={"filter": f"fields/EventDate lt '{now.isoformat()}'", "orderby": "fields/EventDate desc"}
+                query_params={
+                    "filter": f"fields/EventDate lt '{now_str}'", 
+                    "orderby": "fields/EventDate desc",
+                    "top": 10,
+                    "expand": "fields($select=Title,EventDate)"
+                }
             )
 
-            next_meeting = upcoming_events.value[0].fields.additional_data['EventDate'] if upcoming_events.value else "None scheduled"
-            last_meeting = past_events.value[0].fields.additional_data['EventDate'] if past_events.value else "None"
+            def find_valid_meeting(events_collection):
+                if not events_collection or not events_collection.value:
+                    return None
+                
+                for event in events_collection.value:
+                    fields = event.fields
+                    if not fields or not fields.additional_data:
+                        continue
+                    
+                    title = fields.additional_data.get('Title', '')
+                    title_lower = title.lower()
+                    
+                    if 'board meeting' in title_lower and 'postpone' not in title_lower and 'cancel' not in title_lower:
+                        return {
+                            "title": title,
+                            "date": fields.additional_data.get('EventDate', 'Unknown Date')
+                        }
+                        
+                return None
+
+            next_meeting = find_valid_meeting(upcoming_events)
+            last_meeting = find_valid_meeting(past_events)
             
-            return f"The last board meeting was on {last_meeting}. The next board meeting is on {next_meeting}."
+            return json.dumps({
+                "last_board_meeting": last_meeting,
+                "next_board_meeting": next_meeting
+            }, indent=2)
 
         except ODataError as odata_error:
-            return f"An error occurred while connecting to SharePoint: {odata_error.error.message}"
+            error_msg = odata_error.error.message if odata_error.error else str(odata_error)
+            return json.dumps({"error": f"An error occurred while connecting to SharePoint: {error_msg}"})
         except Exception as e:
-            return f"An unexpected error occurred: {e}"
+            return json.dumps({"error": f"An unexpected error occurred: {e}"})
 
 class OneNoteToolInput(BaseModel):
     """Input schema for OneNoteTool."""
+    user_id: str = Field(..., description="The ID or User Principal Name (UPN) of the user who owns the OneNote notebook. Required because app-only authentication doesn't have a default user context.")
     notebook_id: str = Field(..., description="The ID of the OneNote notebook.")
 
 class OneNoteTool(BaseTool):
@@ -72,41 +124,34 @@ class OneNoteTool(BaseTool):
     )
     args_schema: Type[BaseModel] = OneNoteToolInput
 
-    def _run(self, notebook_id: str) -> str:
+    def _run(self, user_id: str, notebook_id: str) -> str:
         """
         Connects to OneNote and retrieves the content of a page.
-        
-        To use this tool, you need to set the following environment variables:
-        - AZURE_TENANT_ID: The ID of your Azure tenant.
-        - AZURE_CLIENT_ID: The client ID for your Azure AD app.
-        - AZURE_CLIENT_SECRET: The client secret for your Azure AD app.
         """
-        tenant_id = os.environ.get("AZURE_TENANT_ID")
-        client_id = os.environ.get("AZURE_CLIENT_ID")
-        client_secret = os.environ.get("AZURE_CLIENT_SECRET")
-
-        if not all([tenant_id, client_id, client_secret]):
+        graph_client = get_graph_client()
+        if not graph_client:
             return "Azure credentials are not configured. Please set AZURE_TENANT_ID, AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET environment variables."
 
         try:
-            credential = ClientSecretCredential(tenant_id, client_id, client_secret)
-            graph_client = GraphServiceClient(credentials=credential)
-
-            # Get pages in the notebook
-            pages = graph_client.me.onenote.notebooks.by_notebook_id(notebook_id).pages.get()
+            # Get pages in the notebook. 
+            # Note: We replaced '/me' with 'users.by_user_id(...)' because ClientSecretCredential does not have a user context.
+            pages = graph_client.users.by_user_id(user_id).onenote.notebooks.by_notebook_id(notebook_id).pages.get()
             
-            if not pages.value:
-                return f"No pages found in notebook with ID {notebook_id}."
+            if not pages or not pages.value:
+                return f"No pages found in notebook with ID {notebook_id} for user {user_id}."
 
-            # For simplicity, we'll just get the content of the first page.
-            # In a real-world scenario, you would need to identify the correct page.
+            # For simplicity, we get the content of the first page.
             page_id = pages.value[0].id
-            page_content = graph_client.me.onenote.pages.by_onenote_page_id(page_id).content.get()
+            page_content = graph_client.users.by_user_id(user_id).onenote.pages.by_onenote_page_id(page_id).content.get()
 
-            return page_content.decode('utf-8')
+            # The page_content might be returned as bytes
+            if isinstance(page_content, bytes):
+                return page_content.decode('utf-8')
+            return str(page_content)
 
         except ODataError as odata_error:
-            return f"An error occurred while connecting to OneNote: {odata_error.error.message}"
+            error_msg = odata_error.error.message if odata_error.error else str(odata_error)
+            return f"An error occurred while connecting to OneNote: {error_msg}"
         except Exception as e:
             return f"An unexpected error occurred: {e}"
 
