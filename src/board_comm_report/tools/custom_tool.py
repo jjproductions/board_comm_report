@@ -13,24 +13,42 @@ from msgraph.generated.sites.item.lists.item.items.items_request_builder import 
 
 # Module-level cache for the Microsoft Graph client to avoid redundant authentication
 # and to prevent Pydantic serialization issues within CrewAI tools.
-_cached_graph_client: Optional[GraphServiceClient] = None
+_cached_sharepoint_client: Optional[GraphServiceClient] = None
+_cached_onenote_client: Optional[GraphServiceClient] = None
 
 import asyncio
 
-def get_graph_client() -> Optional[GraphServiceClient]:
-    global _cached_graph_client
-    if _cached_graph_client is None:
-        tenant_id = os.environ.get("AZURE_TENANT_ID")
-        client_id = os.environ.get("AZURE_CLIENT_ID")
-        client_secret = os.environ.get("AZURE_CLIENT_SECRET")
-        if tenant_id and client_id and client_secret:
-            credential = ClientSecretCredential(tenant_id, client_id, client_secret)
-            # You must provide the .default scope for client credentials
-            _cached_graph_client = GraphServiceClient(
-                credentials=credential, 
-                scopes=['https://graph.microsoft.com/.default']
-            )
-    return _cached_graph_client
+def get_graph_client(client_type: str = "sharepoint") -> Optional[GraphServiceClient]:
+    global _cached_sharepoint_client, _cached_onenote_client
+    
+    tenant_id = os.environ.get("AZURE_TENANT_ID")
+    
+    if client_type == "sharepoint":
+        if _cached_sharepoint_client is None:
+            client_id = os.environ.get("SHAREPOINT_CLIENT_ID") or os.environ.get("AZURE_CLIENT_ID")
+            client_secret = os.environ.get("SHAREPOINT_CLIENT_SECRET") or os.environ.get("AZURE_CLIENT_SECRET")
+            if tenant_id and client_id and client_secret:
+                credential = ClientSecretCredential(tenant_id, client_id, client_secret)
+                _cached_sharepoint_client = GraphServiceClient(
+                    credentials=credential, 
+                    scopes=['https://graph.microsoft.com/.default']
+                )
+        return _cached_sharepoint_client
+        
+    elif client_type == "onenote":
+        if _cached_onenote_client is None:
+            tenant_id = os.environ.get("ONENOTE_TENANT_ID") or os.environ.get("AZURE_TENANT_ID")
+            client_id = os.environ.get("ONENOTE_CLIENT_ID") or os.environ.get("AZURE_CLIENT_ID")
+            client_secret = os.environ.get("ONENOTE_CLIENT_SECRET") or os.environ.get("AZURE_CLIENT_SECRET")
+            if tenant_id and client_id and client_secret:
+                credential = ClientSecretCredential(tenant_id, client_id, client_secret)
+                _cached_onenote_client = GraphServiceClient(
+                    credentials=credential, 
+                    scopes=['https://graph.microsoft.com/.default']
+                )
+        return _cached_onenote_client
+        
+    return None
 
 class SharePointToolInput(BaseModel):
     pass
@@ -53,9 +71,9 @@ class SharePointTool(BaseTool):
         if not site_id or not calendar_id:
             return json.dumps({"error": "SharePoint credentials are not fully configured. Please set SHAREPOINT_SITE_ID and SHAREPOINT_CALENDAR_ID environment variables."})
 
-        graph_client = get_graph_client()
+        graph_client = get_graph_client("sharepoint")
         if not graph_client:
-            return json.dumps({"error": "Azure credentials are not configured. Please set AZURE_TENANT_ID, AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET environment variables."})
+            return json.dumps({"error": "Azure SharePoint credentials are not configured. Please set AZURE_TENANT_ID, AZURE_CLIENT_ID (or SHAREPOINT_CLIENT_ID), and AZURE_CLIENT_SECRET environment variables."})
 
         try:
             now = datetime.now()
@@ -138,8 +156,9 @@ class SharePointTool(BaseTool):
 
 class OneNoteToolInput(BaseModel):
     """Input schema for OneNoteTool."""
-    user_id: str = Field(..., description="The ID or User Principal Name (UPN) of the user who owns the OneNote notebook. Required because app-only authentication doesn't have a default user context.")
-    notebook_id: str = Field(..., description="The ID of the OneNote notebook.")
+    site_id: str = Field(..., description="The SharePoint Site ID.")
+    section_id: str = Field(..., description="The OneNote Section ID.")
+    last_meeting_date: str = Field(..., description="The date of the last board meeting in ISO format (e.g., YYYY-MM-DD).")
 
 class OneNoteTool(BaseTool):
     name: str = "OneNote Extractor"
@@ -149,36 +168,91 @@ class OneNoteTool(BaseTool):
     )
     args_schema: Type[BaseModel] = OneNoteToolInput
 
-    def _run(self, user_id: str, notebook_id: str) -> str:
+    def _run(self, site_id: str, section_id: str, last_meeting_date: str) -> str:
         """
-        Connects to OneNote and retrieves the content of a page.
+        Connects to OneNote and retrieves the content of pages that fall between the given date and today.
         """
-        graph_client = get_graph_client()
+        graph_client = get_graph_client("onenote")
         if not graph_client:
-            return "Azure credentials are not configured. Please set AZURE_TENANT_ID, AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET environment variables."
+            return "Azure OneNote credentials are not configured. Please set AZURE_TENANT_ID, ONENOTE_CLIENT_ID, and ONENOTE_CLIENT_SECRET environment variables."
 
         try:
+            from datetime import datetime, timezone
+            
             # We must run graphite async methods in a sync wrapper for the crew tools
             async def get_page_content():
-                # 1. Get the notebook's sections
-                sections_response = await graph_client.users.by_user_id(user_id).onenote.notebooks.by_notebook_id(notebook_id).sections.get()
-                if not sections_response or not sections_response.value:
-                    return f"No sections found in notebook {notebook_id} for user {user_id}."
+                try:
+                    # Clean the date string for fromisoformat if needed
+                    date_str = last_meeting_date.replace('Z', '+00:00')
+                    # fromisoformat handles +00:00, or standard YYYY-MM-DD
+                    if 'T' not in date_str:
+                        target_date = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                    else:
+                        target_date = datetime.fromisoformat(date_str)
+                        if target_date.tzinfo is None:
+                            target_date = target_date.replace(tzinfo=timezone.utc)
+                            
+                    target_date_iso = target_date.strftime("%Y-%m-%dT%H:%M:%SZ")
+                except Exception as e:
+                    return f"Invalid last_meeting_date format: {e}"
+
+                from msgraph.generated.sites.item.onenote.sections.item.pages.pages_request_builder import PagesRequestBuilder
                 
-                first_section_id = sections_response.value[0].id
-                
-                # 2. Get pages from that section
-                pages_response = await graph_client.users.by_user_id(user_id).onenote.sections.by_onenote_section_id(first_section_id).pages.get()
+                query_params = PagesRequestBuilder.PagesRequestBuilderGetQueryParameters(
+                    top=100,
+                    select=["title", "createdDateTime", "contentUrl"],
+                    orderby=["createdDateTime desc"],
+                    filter=f"createdDateTime ge {target_date_iso}"
+                )
+                request_config = RequestConfiguration(query_parameters=query_params)
+                pages_response = await graph_client.sites.by_site_id(site_id).onenote.sections.by_onenote_section_id(section_id).pages.get(request_configuration=request_config)
                 if not pages_response or not pages_response.value:
-                    return f"No pages found in the first section of notebook {notebook_id}."
+                    return f"No pages found in section {section_id} for site {site_id}."
                     
-                # 3. Get the first page's content
-                page_id = pages_response.value[0].id
-                page_content = await graph_client.users.by_user_id(user_id).onenote.pages.by_onenote_page_id(page_id).content.get()
+                now = datetime.now(timezone.utc)
                 
-                if isinstance(page_content, bytes):
-                    return page_content.decode('utf-8')
-                return str(page_content)
+                # Filter pages by created_date_time between last_meeting_date and today (as a safeguard/upper bound limit)
+                valid_pages = []
+                for page in pages_response.value:
+                    page_date = getattr(page, 'created_date_time', None)
+                    if not page_date:
+                        continue
+                        
+                    if isinstance(page_date, str):
+                        try:
+                            p_str = page_date.replace('Z', '+00:00')
+                            page_date = datetime.fromisoformat(p_str)
+                        except Exception:
+                            continue
+                            
+                    if isinstance(page_date, datetime):
+                        if page_date.tzinfo is None:
+                            page_date = page_date.replace(tzinfo=timezone.utc)
+                        
+                        if target_date <= page_date <= now:
+                            valid_pages.append(page)
+                
+                if not valid_pages:
+                    return f"No pages found between {last_meeting_date} and today in section {section_id}."
+                
+                content_results = []
+                for page in valid_pages:
+                    page_id = getattr(page, 'id', 'unknown_id')
+                    try:
+                        page_content = await graph_client.sites.by_site_id(site_id).onenote.pages.by_onenote_page_id(page_id).content.get()
+                        
+                        if isinstance(page_content, bytes):
+                            text_content = page_content.decode('utf-8')
+                        else:
+                            text_content = str(page_content)
+                            
+                        page_title = getattr(page, 'title', page_id)
+                        p_date = getattr(page, 'created_date_time', 'Unknown Date')
+                        content_results.append(f"--- Page: {page_title} (Created: {p_date}) ---\n{text_content}")
+                    except Exception as e:
+                        content_results.append(f"--- Error loading page {page_id}: {str(e)} ---")
+                
+                return "\n\n".join(content_results)
                 
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
