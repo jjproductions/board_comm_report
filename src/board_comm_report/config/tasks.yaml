@@ -1,7 +1,7 @@
 # Updated for Hierarchical Process
 collection_objective:
   description: >
-    1. Access the Board SharePoint events calendar to identify the date of the last and upcoming 'Full Board Meeting'.
+    1. Access the Board SharePoint events calendar to identify the date of the last and upcoming 'Board Meeting'.
     2. Using that date as the starting point, iterate through the following externalized committee list: {committee_list}.
     3. For each entry, access the specified 'notebook_id' and 'section' in OneNote.
     4. Extract all meeting pages created after the last Board meeting.

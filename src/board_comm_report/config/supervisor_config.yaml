@@ -11,6 +11,8 @@ supervisor_instructions: |
   - If a committee has no meetings, instruct the Summarizer to note "No meetings held this period" for that section.
   - Do not let the Policy Officer start until the Summarizer has finished all sections.
   - Quality Control: If a summary is too vague, ask the Summarizer to revise it before finishing.
-manager_model: "ollama/mistral-small:24b-instruct-2506-q4_K_M"
+manager_model: "ollama/mistral-small3.2:24b-instruct-2506-q4_K_M"
 worker_model: "ollama/llama3.1:8b-instruct-q4_K_M"
 ollama_base: "http://localhost:11434"
+manager_temperature: 0.2
+

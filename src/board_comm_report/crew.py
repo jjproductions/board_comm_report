@@ -1,5 +1,5 @@
 from crewai import Agent, Crew, Process, Task, LLM
-from crewai.project import CrewBase, agent, crew, task
+from crewai.project import CrewBase, agent, crew, task, before_kickoff
 from typing import List
 import os
 import yaml
@@ -30,13 +30,16 @@ supervisor_instructions = supervisor_config['supervisor_instructions'].format(co
 manager_llm = LLM(
     model=os.environ.get("SPV_MODEL", supervisor_config['manager_model']),
     base_url=base_url,
-    instructions=supervisor_instructions
+    instructions=supervisor_instructions,
+    api_key=os.environ.get("OPENAI_API_KEY", "none"),
+    temperature=supervisor_config.get('manager_temperature', 0.2)
 )
 
 # Standard model for worker agents
 worker_llm = LLM(
     model=os.environ.get("WKR_MODEL", supervisor_config['worker_model']), 
-    base_url=base_url
+    base_url=base_url,
+    api_key=os.environ.get("OPENAI_API_KEY", "none")
 )
 
 @CrewBase
@@ -47,6 +50,13 @@ class BoardCommReport():
     # you can use the @before_kickoff and @after_kickoff decorators
     # https://docs.crewai.com/concepts/crews#example-crew-class-with-decorators
     
+    @before_kickoff
+    def add_committee_list(self, inputs):
+        if inputs is None:
+            inputs = {}
+        inputs['committee_list'] = committee_data
+        return inputs
+
     @agent
     def meeting_coordinator(self) -> Agent:
         return Agent(
@@ -105,6 +115,6 @@ class BoardCommReport():
             agents=self.agents,
             tasks=self.tasks,
             process=Process.hierarchical,
-            supervisor_llm=manager_llm,
+            manager_llm=manager_llm,
             verbose=True
         )

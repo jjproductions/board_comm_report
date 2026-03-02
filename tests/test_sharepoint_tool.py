@@ -117,3 +117,14 @@ def test_sharepoint_tool_no_valid_meetings(mock_graph_client, mock_env_vars):
     result = json.loads(result_json)
     assert result["next_board_meeting"] is None
     assert result["last_board_meeting"] is None
+
+def test_sharepoint_tool_missing_credentials():
+    """
+    Test that the tool fails gracefully when environment variables are not set.
+    """
+    with patch.dict(os.environ, {}, clear=True):
+        tool = SharePointTool()
+        result_json = tool._run()
+        result = json.loads(result_json)
+        assert "error" in result
+        assert "Azure credentials are not configured" in result["error"]
