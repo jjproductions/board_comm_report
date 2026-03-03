@@ -17,7 +17,7 @@ committees:
   - name: "Fundraising"
     site_id: "instituteofmusic.sharepoint.com,9e2bd0b8-1bab-4866-933b-564a38a66704,71e11cde-6f33-435a-aab3-afa36e73984d"
     # notebook_id: "1-6992f62a-9217-47ec-9507-302ac3672d39"
-    section: "Meetings"
+    # section: "Meetings"
     section_id: "1-d9d016bc-4184-4a50-921e-f373608be746"
   # - name: "Executive"
   #   notebook_id: "NB_EXE_005"

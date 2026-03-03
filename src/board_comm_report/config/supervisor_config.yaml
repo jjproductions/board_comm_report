@@ -11,8 +11,10 @@ supervisor_instructions: |
   - If a committee has no meetings, instruct the Summarizer to note "No meetings held this period" for that section.
   - Do not let the Policy Officer start until the Summarizer has finished all sections.
   - Quality Control: If a summary is too vague, ask the Summarizer to revise it before finishing.
+  - CRITICAL RULES FOR ERRORS: If a worker encounters an error, or a tool fails with an error string, DO NOT use 'ask_question_to_coworker'. Accept the error and continue. NEVER ask a coworker why a tool failed.
 manager_model: "ollama/mistral-small3.2:24b-instruct-2506-q4_K_M"
-worker_model: "ollama/llama3.1:8b-instruct-q4_K_M"
+worker_model: "ollama/gemma3:27b-it-qat"
 ollama_base: "http://localhost:11434"
 manager_temperature: 0.2
+worker_temperature: 0.2
 

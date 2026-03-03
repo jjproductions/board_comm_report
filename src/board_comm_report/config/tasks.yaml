@@ -1,14 +1,21 @@
 # Updated for Hierarchical Process
 collection_objective:
   description: >
-    1. Access the Board SharePoint events calendar to identify the date of the last and upcoming 'Board Meeting'.
-    2. Using that date as the starting point, iterate through the following externalized committee list: {committee_list}.
-    3. For each entry, access the specified 'notebook_id' and 'section' in OneNote.
-    4. Extract all meeting pages created after the last Board meeting.
+    1. Call the SharePoint Navigator tool EXACTLY ONCE to identify the date of the last and upcoming 'Board Meeting'. Save these dates in your memory.
+    2. Using the saved 'last meeting' date as the starting point, iterate through the following externalized committee list: {committee_list}.
+    3. For each entry, access the specified 'site_id' and 'section_id' in OneNote.
+    4. Extract all meeting pages created after the saved last Board meeting date.
     5. Label each extract with the Committee Name and Meeting Date.
+    CRITICAL: Do NOT call the SharePoint Navigator tool for each committee. You must only call it once at the very beginning and reuse the date.
+    If the SharePointTool or OneNoteTool returns an error, OR you cannot find a valid date, do NOT improvise.
+    Do NOT ask a coworker for help. Accept the error and return `content: "Error: [paste error here]"` and `has_data: false`.
   expected_output: >
     A structured repository of raw meeting text, organized by committee name. 
-    If a committee has no meetings, explicitly state "No meetings found for [Committee Name]".
+    You MUST output valid JSON matching the CoordinatorOutput schema.
+    For each committee, you MUST return a dictionary with exactly 3 keys:
+    1. "name": The committee name.
+    2. "content": The raw text of the meeting minutes (or a string saying "No meetings found for [Committee Name]").
+    3. "has_data": A boolean (true or false) indicating if meeting text was successfully extracted. NEVER use 'has_content', use 'has_data'.
   agent: meeting_coordinator
 
 synthesis_objective:
@@ -17,8 +24,10 @@ synthesis_objective:
     - Extract all 'Motions' (Passed/Failed).
     - Create a table of 'Action Items' with Owners and Deadlines.
     - Identify any 'High Priority' items requiring a Full Board vote by looking for words like 'Motion to recommend to the Board', 'Requires Board approval', etc.
+    CRITICAL: If a committee's text contains an Error or says "No meetings found", DO NOT attempt to troubleshoot, resolve, or summarize the technical error. You are a Document Specialist, not IT. Simply output "No meetings held this period" or "Data unavailable" for that committee.
+    CRITICAL: Do NOT include any 'Additional Notes', 'Recommendations', 'Advice', or conversational text. Your summary MUST contain ONLY the factual information from the minutes provided.
   expected_output: >
-    A comprehensive Markdown draft of the Committee Reports section for the Board Packet.
+    A comprehensive Markdown draft of the Committee Reports section for the Board Committee Report.
   agent: document_summarizer
 
 final_audit_objective:
@@ -29,6 +38,7 @@ final_audit_objective:
     3. Use the 'upcoming_board_date' (identified by the Coordinator in the first task) 
        to generate the final filename.
     4. Check that the final output is a clean, professional Markdown file ready for SharePoint upload.
+    CRITICAL: Do NOT add any 'Additional Notes', commentary, or unprompted follow-up items to the end of the document.
   expected_output: >
     A final, submission-ready file named 'Board_Committee_Reports_[upcoming_board_date]_Draft.md'.
   agent: policy_compliance_officer

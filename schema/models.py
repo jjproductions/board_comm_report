@@ -10,3 +10,7 @@ class CoordinatorOutput(BaseModel):
     last_board_meeting: str
     upcoming_board_meeting: str
     all_committee_data: List[CommitteeMinutes]
+
+class ReportOutput(BaseModel):
+    file_name: str
+    content: str

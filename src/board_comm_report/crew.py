@@ -5,8 +5,8 @@ import os
 import yaml
 from pathlib import Path
 from dotenv import load_dotenv
-from schema.models import CoordinatorOutput
-from board_comm_report.tools.custom_tool import get_tools
+from schema.models import CoordinatorOutput, ReportOutput
+from board_comm_report.tools import get_tools
 
 load_dotenv()
 
@@ -32,14 +32,18 @@ manager_llm = LLM(
     base_url=base_url,
     instructions=supervisor_instructions,
     api_key=os.environ.get("OPENAI_API_KEY", "none"),
-    temperature=supervisor_config.get('manager_temperature', 0.2)
+    temperature=supervisor_config.get('manager_temperature', 0.2),
+    verbose=True,
+    max_iter=2
 )
 
 # Standard model for worker agents
 worker_llm = LLM(
     model=os.environ.get("WKR_MODEL", supervisor_config['worker_model']), 
     base_url=base_url,
-    api_key=os.environ.get("OPENAI_API_KEY", "none")
+    api_key=os.environ.get("OPENAI_API_KEY", "none"),
+    temperature=supervisor_config.get('worker_temperature', 0.2),
+    verbose=True
 )
 
 @CrewBase
@@ -82,7 +86,7 @@ class BoardCommReport():
             config=self.agents_config['policy_compliance_officer'],
             llm=manager_llm,
             verbose=True,
-            allow_delegation=True
+            allow_delegation=False
         )
 
     @task
@@ -96,16 +100,16 @@ class BoardCommReport():
     @task
     def summarization_task(self) -> Task:
         return Task(
-            config=self.tasks_config['summarization_task'],
+            config=self.tasks_config['synthesis_objective'],
             agent=self.document_summarizer()
         )
 
     @task
     def policy_alignment_task(self) -> Task:
         return Task(
-            config=self.tasks_config['policy_alignment_task'],
+            config=self.tasks_config['final_audit_objective'],
             agent=self.policy_compliance_officer(),
-            output_file='board_meeting_report.md'
+            output_pydantic=ReportOutput
         )
 
     @crew
@@ -116,5 +120,6 @@ class BoardCommReport():
             tasks=self.tasks,
             process=Process.hierarchical,
             manager_llm=manager_llm,
-            verbose=True
+            verbose=True,
+            output_log_file="nonprofit_crew_logs.json"
         )

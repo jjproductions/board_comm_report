@@ -23,7 +23,27 @@ def run():
     }
 
     try:
-        BoardCommReport().crew().kickoff(inputs=inputs)
+        result = BoardCommReport().crew().kickoff(inputs=inputs)
+        
+        if hasattr(result, 'pydantic') and result.pydantic:
+            report_data = result.pydantic
+            file_name = report_data.file_name
+            content = report_data.content
+            
+            with open(file_name, 'w', encoding='utf-8') as f:
+                f.write(content)
+            print(f"✅ Successfully saved report to {file_name}")
+        elif hasattr(result, 'json_dict') and result.json_dict:
+            file_name = result.json_dict.get('file_name', 'Board_Committee_Reports_Draft.md')
+            content = result.json_dict.get('content', str(result))
+            with open(file_name, 'w', encoding='utf-8') as f:
+                f.write(content)
+            print(f"✅ Successfully saved report to {file_name} from JSON dict.")
+        else:
+            print("Warning: Did not receive structured Pydantic output. Falling back to default filename.")
+            with open("Board_Committee_Reports_Draft.md", 'w', encoding='utf-8') as f:
+                f.write(str(result))
+            
     except Exception as e:
         raise Exception(f"An error occurred while running the crew: {e}")
 
