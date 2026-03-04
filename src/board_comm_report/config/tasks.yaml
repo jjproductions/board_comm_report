@@ -19,25 +19,58 @@ collection_objective:
   agent: meeting_coordinator
 
 synthesis_objective:
-  description: >
+  description: |
     Transform the gathered raw minutes into a professional, concise Board Report. 
-    - Extract all 'Motions' (Passed/Failed).
-    - Create a table of 'Action Items' with Owners and Deadlines.
-    - Identify any 'High Priority' items requiring a Full Board vote by looking for words like 'Motion to recommend to the Board', 'Requires Board approval', etc.
-    CRITICAL: If a committee's text contains an Error or says "No meetings found", DO NOT attempt to troubleshoot, resolve, or summarize the technical error. You are a Document Specialist, not IT. Simply output "No meetings held this period" or "Data unavailable" for that committee.
+    You MUST output the report for EACH committee using the EXACT following markdown structure (including line breaks):
+    
+    ## [Committee Name] **Summary:** 
+    [Write a cohesive 2-4 sentence professional summary of the main discussion points here. Synthesize the text into a paragraph. Do NOT just list bullet points and do NOT list attendees.]
+    
+    **I. Action Items**
+    | Item | Owner | Deadline |
+    |---|---|---|
+    | [Task] | [Person] | [Date or TBD] |
+    
+    **II. High Priority Items Requiring Full Board Vote**
+    *   **[Topic]:** [Explanation of what requires Full Board vote/approval, or write 'None specified.']
+    
+    CRITICAL: You MUST use Markdown tables for Action Items. You MUST write actual summary paragraphs, not just copy raw bullet points.
+    CRITICAL: If a committee's text contains an Error or says "No meetings found", DO NOT attempt to troubleshoot, resolve, or summarize the technical error. You are a Document Specialist, not IT. For that committee, you MUST output ONLY the following, with no other sections:
+    
+    ## [Committee Name] **Summary:** Data unavailable.
+    
     CRITICAL: Do NOT include any 'Additional Notes', 'Recommendations', 'Advice', or conversational text. Your summary MUST contain ONLY the factual information from the minutes provided.
-  expected_output: >
-    A comprehensive Markdown draft of the Committee Reports section for the Board Committee Report.
+  expected_output: |
+    A comprehensive Markdown draft of the Committee Reports that MUST strictly use this EXACT format:
+    
+    ## [Committee Name] **Summary:** 
+    [Write a cohesive 2-4 sentence professional summary of the main discussion points here. Synthesize the text into a paragraph. Do NOT just list bullet points and do NOT list attendees.]
+    
+    **I. Action Items**
+    | Item | Owner | Deadline |
+    |---|---|---|
+    | [Task] | [Person] | [Date or TBD] |
+    
+    **II. High Priority Items Requiring Full Board Vote**
+    *   **[Topic]:** [Explanation of what requires Full Board vote/approval, or write 'None specified.']
+    
+    EXCEPTION: If a committee has no meetings or missing data, you MUST output ONLY the following for that committee (DO NOT include the Action Items or High Priority sections):
+    ## [Committee Name] **Summary:** Data unavailable.
   agent: document_summarizer
 
 final_audit_objective:
-  description: >
+  description: |
     Perform a final quality and policy audit on the drafted report.
-    1. Verify that the document follows the nonprofit's standard header and versioning format.
-    2. Ensure all action items are clearly formatted.
-    3. Use the 'upcoming_board_date' (identified by the Coordinator in the first task) 
+    1. Add the exact following title block to the VERY TOP of the document:
+       ## Board Report - [Date of Upcoming Board Meeting]
+       ## Date of Last Board Meeting: [Date of Last Board Meeting]
+       (where you substitute the actual dates stored in memory by the coordinator)
+    2. Verify that the document follows the nonprofit's standard header and versioning format.
+    3. Ensure all action items are clearly formatted in Markdown tables.
+    4. Use the 'upcoming_board_date' (identified by the Coordinator in the first task) 
        to generate the final filename.
-    4. Check that the final output is a clean, professional Markdown file ready for SharePoint upload.
+    5. Check that the final output is a clean, professional Markdown file ready for SharePoint upload.
+    CRITICAL: You MUST perfectly preserve the section headers, spacing, and summary paragraphs passed to you by the document summarizer. Do not collapse lines or alter the data layout.
     CRITICAL: Do NOT add any 'Additional Notes', commentary, or unprompted follow-up items to the end of the document.
   expected_output: >
     A final, submission-ready file named 'Board_Committee_Reports_[upcoming_board_date]_Draft.md'.

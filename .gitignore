@@ -3,4 +3,7 @@ __pycache__/
 .DS_Store
 .venv
 dist
-token_cache.bin
+token_cache*
+mlflow.db
+/Reports/*
+*logs*

@@ -43,37 +43,26 @@ class MsalCachedTokenCredential:
             print("Manual re-auth required once to re-prime the cache.")
             raise Exception("Manual re-auth required once to re-prime the cache. No accounts found in token_cache.bin.")
 
-# Module-level cache for the Microsoft Graph client to avoid redundant authentication
-# and to prevent Pydantic serialization issues within CrewAI tools.
-_cached_sharepoint_client: Optional[GraphServiceClient] = None
-_cached_onenote_client: Optional[GraphServiceClient] = None
-
 def get_graph_client(client_type: str = "sharepoint") -> Optional[GraphServiceClient]:
-    global _cached_sharepoint_client, _cached_onenote_client
-    
     tenant_id = os.environ.get("AZURE_TENANT_ID")
     
     if client_type == "sharepoint":
-        if _cached_sharepoint_client is None:
-            client_id = os.environ.get("SHAREPOINT_CLIENT_ID") or os.environ.get("AZURE_CLIENT_ID")
-            client_secret = os.environ.get("SHAREPOINT_CLIENT_SECRET") or os.environ.get("AZURE_CLIENT_SECRET")
-            if tenant_id and client_id and client_secret:
-                credential = ClientSecretCredential(tenant_id, client_id, client_secret)
-                _cached_sharepoint_client = GraphServiceClient(
-                    credentials=credential, 
-                    scopes=['https://graph.microsoft.com/.default']
-                )
-        return _cached_sharepoint_client
+        client_id = os.environ.get("SHAREPOINT_CLIENT_ID") or os.environ.get("AZURE_CLIENT_ID")
+        client_secret = os.environ.get("SHAREPOINT_CLIENT_SECRET") or os.environ.get("AZURE_CLIENT_SECRET")
+        if tenant_id and client_id and client_secret:
+            credential = ClientSecretCredential(tenant_id, client_id, client_secret)
+            return GraphServiceClient(
+                credentials=credential, 
+                scopes=['https://graph.microsoft.com/.default']
+            )
         
     elif client_type == "onenote":
-        if _cached_onenote_client is None:
-            client_id = os.environ.get("ONENOTE_CLIENT_ID") or os.environ.get("AZURE_CLIENT_ID")
-            if client_id:
-                credential = MsalCachedTokenCredential(client_id)
-                _cached_onenote_client = GraphServiceClient(
-                    credentials=credential, 
-                    scopes=['Notes.Read.All']
-                )
-        return _cached_onenote_client
-        
+        client_id = os.environ.get("ONENOTE_CLIENT_ID") or os.environ.get("AZURE_CLIENT_ID")
+        if client_id:
+            credential = MsalCachedTokenCredential(client_id)
+            return GraphServiceClient(
+                credentials=credential, 
+                scopes=['Notes.Read.All']
+            )
+            
     return None

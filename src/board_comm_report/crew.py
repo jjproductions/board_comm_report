@@ -7,6 +7,14 @@ from pathlib import Path
 from dotenv import load_dotenv
 from schema.models import CoordinatorOutput, ReportOutput
 from board_comm_report.tools import get_tools
+import mlflow
+
+# 1. Point to your local UI
+mlflow.set_tracking_uri("http://127.0.0.1:5000")
+mlflow.set_experiment("Board_Comm_Report")
+
+# 2. Enable the automatic local tracer
+mlflow.crewai.autolog()
 
 load_dotenv()
 

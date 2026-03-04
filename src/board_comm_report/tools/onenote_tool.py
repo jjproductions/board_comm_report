@@ -99,9 +99,19 @@ class OneNoteTool(BaseTool):
                         page_content = await graph_client.sites.by_site_id(site_id).onenote.pages.by_onenote_page_id(page_id).content.get()
                         
                         if isinstance(page_content, bytes):
-                            text_content = page_content.decode('utf-8')
+                            raw_html = page_content.decode('utf-8')
                         else:
-                            text_content = str(page_content)
+                            raw_html = str(page_content)
+                            
+                        try:
+                            from bs4 import BeautifulSoup
+                            soup = BeautifulSoup(raw_html, "html.parser")
+                            text_content = soup.get_text(separator="\n", strip=True)
+                        except ImportError:
+                            text_content = raw_html
+                            
+                        if not text_content or not text_content.strip():
+                            text_content = "(No text content found on this page)"
                             
                         page_title = getattr(page, 'title', page_id)
                         p_date = getattr(page, 'created_date_time', 'Unknown Date')
