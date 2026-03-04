@@ -2,12 +2,13 @@
 name = "board_comm_report"
 version = "0.1.0"
 description = "board-comm-report using crewAI"
-authors = [{ name = "Your Name", email = "you@example.com" }]
+authors = [{ name = "Jonathan Bagby"}]
 requires-python = ">=3.10,<3.14"
 dependencies = [
     "crewai[tools]==1.9.3",
     "msgraph-sdk",
-    "azure-identity"
+    "azure-identity",
+    "beautifulsoup4"
 ]
 
 [project.scripts]

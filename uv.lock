@@ -300,6 +300,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "azure-identity" },
+    { name = "beautifulsoup4" },
     { name = "crewai", extra = ["tools"] },
     { name = "msgraph-sdk" },
 ]
@@ -307,6 +308,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "azure-identity" },
+    { name = "beautifulsoup4" },
     { name = "crewai", extras = ["tools"], specifier = "==1.9.3" },
     { name = "msgraph-sdk" },
 ]

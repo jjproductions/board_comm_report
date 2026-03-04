@@ -7,3 +7,4 @@ token_cache*
 mlflow.db
 /Reports/*
 *logs*
+*draft.md

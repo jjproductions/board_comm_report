@@ -20,42 +20,43 @@ collection_objective:
 
 synthesis_objective:
   description: |
-    Transform the gathered raw minutes into a professional, concise Board Report. 
-    You MUST output the report for EACH committee using the EXACT following markdown structure (including line breaks):
-    
-    ## [Committee Name] **Summary:** 
-    [Write a cohesive 2-4 sentence professional summary of the main discussion points here. Synthesize the text into a paragraph. Do NOT just list bullet points and do NOT list attendees.]
-    
-    **I. Action Items**
-    | Item | Owner | Deadline |
-    |---|---|---|
-    | [Task] | [Person] | [Date or TBD] |
-    
-    **II. High Priority Items Requiring Full Board Vote**
-    *   **[Topic]:** [Explanation of what requires Full Board vote/approval, or write 'None specified.']
-    
-    CRITICAL: You MUST use Markdown tables for Action Items. You MUST write actual summary paragraphs, not just copy raw bullet points.
-    CRITICAL: If a committee's text contains an Error or says "No meetings found", DO NOT attempt to troubleshoot, resolve, or summarize the technical error. You are a Document Specialist, not IT. For that committee, you MUST output ONLY the following, with no other sections:
-    
-    ## [Committee Name] **Summary:** Data unavailable.
-    
-    CRITICAL: Do NOT include any 'Additional Notes', 'Recommendations', 'Advice', or conversational text. Your summary MUST contain ONLY the factual information from the minutes provided.
+    Your goal is to transform the provided raw meeting minutes for multiple committees into a single, professional, and concise Board Report.
+
+    **Chain of Thought:**
+    1.  **Iterate:** Go through each committee's data one by one.
+    2.  **Check for Data:** First, check if the `content` field for the committee contains an error or says "No meetings found".
+    3.  **Handle No Data:** If there's no data, generate ONLY the "Data unavailable" summary for that committee and move to the next one.
+    4.  **Summarize:** If there is data, write a cohesive 2-4 sentence professional summary of the main discussion points. Synthesize the text into a paragraph. Do NOT just list bullet points and do NOT list attendees.
+    5.  **Extract Action Items:** Identify all action items and format them into a Markdown table.
+    6.  **Extract High Priority Items:** Identify any items that require a Full Board vote.
+    7.  **Assemble:** Combine the summary, action items, and high-priority items into the final report for that committee, strictly following the format below.
+    8.  **Combine:** Concatenate the reports for all committees into a single output.
+
+    **CRITICAL RULES:**
+    *   You MUST use Markdown tables for Action Items.
+    *   You MUST write actual summary paragraphs, not just copy raw bullet points.
+    *   If a committee's text contains an Error or says "No meetings found", you MUST output ONLY the "Data unavailable" summary for that committee.
+    *   Do NOT include any 'Additional Notes', 'Recommendations', 'Advice', or conversational text. Your summary MUST contain ONLY the factual information from the minutes provided.
+
   expected_output: |
-    A comprehensive Markdown draft of the Committee Reports that MUST strictly use this EXACT format:
-    
-    ## [Committee Name] **Summary:** 
-    [Write a cohesive 2-4 sentence professional summary of the main discussion points here. Synthesize the text into a paragraph. Do NOT just list bullet points and do NOT list attendees.]
-    
+    A comprehensive Markdown draft of the Committee Reports that MUST strictly use the following format for each committee.
+
+    **--- EXAMPLE START ---**
+    ## Finance Committee **Summary:**
+    The committee reviewed the Q4 2025 financials and approved the report. The main focus of the meeting was the budget planning for 2026, with a draft to be prepared by John Doe.
+
     **I. Action Items**
     | Item | Owner | Deadline |
     |---|---|---|
-    | [Task] | [Person] | [Date or TBD] |
-    
+    | Prepare a draft of the 2026 budget | John Doe | TBD |
+
     **II. High Priority Items Requiring Full Board Vote**
-    *   **[Topic]:** [Explanation of what requires Full Board vote/approval, or write 'None specified.']
-    
-    EXCEPTION: If a committee has no meetings or missing data, you MUST output ONLY the following for that committee (DO NOT include the Action Items or High Priority sections):
-    ## [Committee Name] **Summary:** Data unavailable.
+    *   None specified.
+    **--- EXAMPLE END ---**
+
+    **--- NO DATA EXAMPLE START ---**
+    ## Governance Committee **Summary:** Data unavailable.
+    **--- NO DATA EXAMPLE END ---**
   agent: document_summarizer
 
 final_audit_objective:
